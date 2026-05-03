@@ -14,29 +14,29 @@ def resolve_output_schema(output_schema) -> Union[dict, None]:
     Plain dicts are passed through unchanged. If pydantic is not installed
     and a non-dict is passed, it is returned as-is.
     """
-    if output_schema is None:
-        return None
+    if output_schema is None or not isinstance(output_schema, type):
+        return output_schema
     try:
         from pydantic import BaseModel
-        if isinstance(output_schema, type) and issubclass(output_schema, BaseModel):
-            schema = output_schema.model_json_schema()
-            defs = schema.get("$defs", {})
-
-            def _resolve(obj):
-                if isinstance(obj, dict):
-                    if "$ref" in obj:
-                        ref_name = obj["$ref"].split("/")[-1]
-                        return _resolve(defs[ref_name])
-                    return {k: _resolve(v) for k, v in obj.items() if k != "title"}
-                if isinstance(obj, list):
-                    return [_resolve(i) for i in obj]
-                return obj
-
-            resolved = _resolve(schema)
-            return {k: resolved[k] for k in ("properties", "required") if k in resolved}
     except ImportError:
-        pass
-    return output_schema
+        return output_schema
+    if not issubclass(output_schema, BaseModel):
+        return output_schema
+    schema = output_schema.model_json_schema()
+    defs = schema.get("$defs", {})
+
+    def _resolve(obj):
+        if isinstance(obj, dict):
+            if "$ref" in obj:
+                ref_name = obj["$ref"].split("/")[-1]
+                return _resolve(defs[ref_name])
+            return {k: _resolve(v) for k, v in obj.items() if k != "title"}
+        if isinstance(obj, list):
+            return [_resolve(i) for i in obj]
+        return obj
+
+    resolved = _resolve(schema)
+    return {k: resolved[k] for k in ("properties", "required") if k in resolved}
 
 
 def get_total_tokens_from_string(string: str, encoding_name: str = DEFAULT_MODEL_ENCODING) -> int:
