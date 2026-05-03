@@ -224,8 +224,9 @@ def test_pydantic_field_named_title_preserved(sync_interceptor, sync_client):
     assert schema["properties"]["title"] == {"type": "string", "description": "Article title"}
 
 
-def test_self_referencing_model_no_infinite_recursion(sync_interceptor, sync_client):
-    """Self-referencing models must not cause a RecursionError."""
+def test_self_referencing_model_raises_value_error(sync_client):
+    """Self-referencing models must raise a clear ValueError, not RecursionError."""
+    import pytest
     from typing import Optional
 
     class TreeNode(BaseModel):
@@ -234,10 +235,6 @@ def test_self_referencing_model_no_infinite_recursion(sync_interceptor, sync_cli
 
     TreeNode.model_rebuild()
 
-    sync_interceptor.set_response(200, json=dummy_queued_response)
-    # Should not raise RecursionError
-    sync_client.research(input="Research the latest developments in AI", output_schema=TreeNode)
-    schema = sync_interceptor.get_request().json().get("output_schema")
-    assert "properties" in schema
-    assert "value" in schema["properties"]
+    with pytest.raises(ValueError, match="circular reference"):
+        sync_client.research(input="Research the latest developments in AI", output_schema=TreeNode)
 

@@ -30,7 +30,10 @@ def resolve_output_schema(output_schema) -> Union[dict, None]:
             if "$ref" in obj:
                 ref_name = obj["$ref"].split("/")[-1]
                 if ref_name in visiting:
-                    return {}  # break cycle
+                    raise ValueError(
+                        f"Pydantic model contains a circular reference to '{ref_name}'. "
+                        "Self-referencing models are not supported as output_schema."
+                    )
                 return _resolve(defs[ref_name], visiting | {ref_name})
             result = {}
             for k, v in obj.items():
