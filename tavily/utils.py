@@ -25,14 +25,26 @@ def resolve_output_schema(output_schema) -> Union[dict, None]:
     schema = output_schema.model_json_schema()
     defs = schema.get("$defs", {})
 
-    def _resolve(obj):
+    def _resolve(obj, visiting=frozenset()):
         if isinstance(obj, dict):
             if "$ref" in obj:
                 ref_name = obj["$ref"].split("/")[-1]
-                return _resolve(defs[ref_name])
-            return {k: _resolve(v) for k, v in obj.items() if k != "title"}
+                if ref_name in visiting:
+                    return {}  # break cycle
+                return _resolve(defs[ref_name], visiting | {ref_name})
+            result = {}
+            for k, v in obj.items():
+                if k == "title":
+                    continue  # strip Pydantic metadata annotation
+                if k == "properties":
+                    # resolve each field definition but preserve field names as-is,
+                    # so a user field named "title" is not accidentally dropped
+                    result[k] = {pk: _resolve(pv, visiting) for pk, pv in v.items()}
+                else:
+                    result[k] = _resolve(v, visiting)
+            return result
         if isinstance(obj, list):
-            return [_resolve(i) for i in obj]
+            return [_resolve(i, visiting) for i in obj]
         return obj
 
     resolved = _resolve(schema)

@@ -210,3 +210,34 @@ def test_sync_research_dict_schema_unchanged(sync_interceptor, sync_client):
     request = sync_interceptor.get_request()
     assert request.json().get("output_schema") == plain_schema
 
+
+def test_pydantic_field_named_title_preserved(sync_interceptor, sync_client):
+    """A user-defined field named 'title' must not be silently dropped."""
+    class Article(BaseModel):
+        title: str = Field(description="Article title")
+        body: str = Field(description="Article body")
+
+    sync_interceptor.set_response(200, json=dummy_queued_response)
+    sync_client.research(input="Research the latest developments in AI", output_schema=Article)
+    schema = sync_interceptor.get_request().json().get("output_schema")
+    assert "title" in schema["properties"], "field named 'title' was incorrectly stripped"
+    assert schema["properties"]["title"] == {"type": "string", "description": "Article title"}
+
+
+def test_self_referencing_model_no_infinite_recursion(sync_interceptor, sync_client):
+    """Self-referencing models must not cause a RecursionError."""
+    from typing import Optional
+
+    class TreeNode(BaseModel):
+        value: str
+        child: Optional["TreeNode"] = None
+
+    TreeNode.model_rebuild()
+
+    sync_interceptor.set_response(200, json=dummy_queued_response)
+    # Should not raise RecursionError
+    sync_client.research(input="Research the latest developments in AI", output_schema=TreeNode)
+    schema = sync_interceptor.get_request().json().get("output_schema")
+    assert "properties" in schema
+    assert "value" in schema["properties"]
+
